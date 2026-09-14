@@ -3,6 +3,9 @@ name: Pages
 on:
   push:
     branches: [main]
+  # The check is worth having where it can still stop something: on the
+  # branch, before it is the published set.
+  pull_request:
   workflow_dispatch:
 
 # The published set is what a running meeting was built from, so a broken
@@ -38,6 +41,8 @@ jobs:
 
   deploy:
     needs: check
+    # Only main is the published set; a pull request stops at the check.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       pages: write
