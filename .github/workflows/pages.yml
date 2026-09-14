@@ -1,27 +1,27 @@
-name: Pages
+name: pages
 
 on:
   push:
     branches: [main]
-  # The check is worth having where it can still stop something: on the
-  # branch, before it is the published set.
+  # The check is worth having where it can still stop something, and a preview
+  # is only any use before the thing is published.
   pull_request:
-  workflow_dispatch:
 
-# The published set is what a running meeting was built from, so a broken
-# push must not become the live one: the check has to pass before anything
-# is deployed.
-concurrency:
-  group: pages
-  cancel-in-progress: false
+# Granted here rather than in the reusable workflow: a called workflow runs on
+# the caller's token and can only narrow what it is given, never widen it.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  pull-requests: write
 
 jobs:
   check:
     name: キャラセットを確かめる
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - run: npx --yes jsrex @kuboon/masquerade-character-set/cli set.json
@@ -39,22 +39,13 @@ jobs:
           done
           exit $missing
 
-  deploy:
+  pages:
     needs: check
-    # Only main is the published set; a pull request stops at the check.
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: .
-      - id: deployment
-        uses: actions/deploy-pages@v4
+    uses: kuboon/workflows/.github/workflows/github-page-with-preview.yaml@main
+    with:
+      # Bootstrap, not a habit: the reusable workflow rebuilds the default
+      # branch on every run, and until this branch merges main is still the
+      # initial commit with no build in it. A tree with nothing to build gets
+      # an empty site rather than a failure; a build that is there and fails
+      # still fails. Once main carries build.mjs this is just `node build.mjs`.
+      build-command: if [ -f build.mjs ]; then node build.mjs; else mkdir -p dist; fi
