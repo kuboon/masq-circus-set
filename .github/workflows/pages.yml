@@ -1,0 +1,51 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+  # The check is worth having where it can still stop something, and a preview
+  # is only any use before the thing is published.
+  pull_request:
+
+# Granted here rather than in the reusable workflow: a called workflow runs on
+# the caller's token and can only narrow what it is given, never widen it.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  pull-requests: write
+
+jobs:
+  check:
+    name: キャラセットを確かめる
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: npx --yes jsrex @kuboon/masquerade-character-set/cli set.json
+      # The checker reads the names and the voices; it does not open the
+      # pictures. A character whose drawing never arrived would pass it and
+      # then show up in a lobby as a blank square.
+      - name: 絵がそろっているか
+        run: |
+          missing=0
+          for id in $(node -e "process.stdout.write(require('./set.json').characters.map(c=>c.id).join(' '))"); do
+            if [ ! -f "characters/$id.png" ]; then
+              echo "::error file=set.json::characters/$id.png がありません"
+              missing=1
+            fi
+          done
+          exit $missing
+
+  pages:
+    needs: check
+    uses: kuboon/workflows/.github/workflows/github-page-with-preview.yaml@main
+    with:
+      # Bootstrap, not a habit: the reusable workflow rebuilds the default
+      # branch on every run, and until this branch merges main is still the
+      # initial commit with no build in it. A tree with nothing to build gets
+      # an empty site rather than a failure; a build that is there and fails
+      # still fails. Once main carries build.mjs this is just `node build.mjs`.
+      build-command: if [ -f build.mjs ]; then node build.mjs; else mkdir -p dist; fi
