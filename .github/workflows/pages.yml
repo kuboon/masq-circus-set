@@ -1,0 +1,55 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# The published set is what a running meeting was built from, so a broken
+# push must not become the live one: the check has to pass before anything
+# is deployed.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: キャラセットを確かめる
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npx --yes jsrex @kuboon/masquerade-character-set/cli set.json
+      # The checker reads the names and the voices; it does not open the
+      # pictures. A character whose drawing never arrived would pass it and
+      # then show up in a lobby as a blank square.
+      - name: 絵がそろっているか
+        run: |
+          missing=0
+          for id in $(node -e "process.stdout.write(require('./set.json').characters.map(c=>c.id).join(' '))"); do
+            if [ ! -f "characters/$id.png" ]; then
+              echo "::error file=set.json::characters/$id.png がありません"
+              missing=1
+            fi
+          done
+          exit $missing
+
+  deploy:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
